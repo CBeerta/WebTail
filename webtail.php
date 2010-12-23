@@ -11,6 +11,7 @@
 
 define("WEBTAIL_VERSION", '$Id$');
 
+
 class WebTail
 {
     /**
@@ -162,7 +163,9 @@ list($first_include) = get_included_files();
 if ($first_include == __FILE__)
 {
     /** Check if this file got included for the WebTail class, otherwise execute below **/
-    
+
+    @set_time_limit(0);
+
     $interval = 5;
     $last_bytes = 0;
     $urls = array();
@@ -232,6 +235,7 @@ EOF;
                 {
                     print "$res";
                 }
+                flush();
 
                 $prev_print = $wt->url;
             }
