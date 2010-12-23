@@ -7,10 +7,7 @@
 *
 * @author Claus Beerta <claus@beerta.de>
 *
-* @todo: 
-*           basicauth ?
 **/
-
 
 define("WEBTAIL_VERSION", '$Id$');
 
@@ -32,56 +29,58 @@ class WebTail
     public $interval;
 
 
-
     /**
     * Initial HEAD request to figure out content length and check general availability of the file
     *
     **/
-    public function __construct($url, $interval = 5)
+    public function __construct($url, $interval = 5, $last_bytes = 0)
     {
         $this->url = $url;
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $this->url); 
+        $ch = $this->_init_curl();
         curl_setopt($ch, CURLOPT_NOBODY, True); 
-        curl_setopt($ch, CURLOPT_USERAGENT, "webtail.php"); 
         $res = curl_exec($ch);
-
         $info = curl_getinfo($ch);
-  
+        curl_close($ch);
+
+        print_r($info);  
         if ($info['http_code'] !== 200)
         {
             throw new Exception ("Unable to open {$url}\n");
         }
-        curl_setopt($ch, CURLOPT_NOBODY, False); 
-        
-        $this->offset = $info['download_content_length'];
+
+        if ($info['download_content_length'] - $last_bytes >= 0)
+        {
+            $this->offset = $info['download_content_length'] - $last_bytes;
+        }
+        else
+        {
+            $this->offset = $info['download_content_length'];
+        }
+
+        print_r($this);
+            
         $this->interval = $interval;
-        curl_close($ch);
     }
 
     /**
-    * Check via http head request if new content has arrived or file got truncated
+    * Check via head request if new content has arrived or file got truncated
     *
     **/
     public function has_new_content()
     {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $this->url); 
+        $ch = $this->_init_curl();
         curl_setopt($ch, CURLOPT_NOBODY, True); 
-        curl_setopt($ch, CURLOPT_USERAGENT, "webtail.php"); 
         $res = curl_exec($ch);
         $info = curl_getinfo($ch);
+        curl_close($ch);
 
         if ($info['http_code'] !== 200)
         {
             /** File vanished, so no updates **/
             return false;
         }
-        curl_setopt($ch, CURLOPT_NOBODY, False); 
-        curl_close($ch);
-
-        if ($this->offset > $info['download_content_length'])
+        else if ($this->offset > $info['download_content_length'])
         {
             /** file got truncated, store new offset **/
             $this->offset = $info['download_content_length'];
@@ -102,7 +101,7 @@ class WebTail
     {
         if ($this->has_new_content() !== false)
         {
-            $ch = curl_init();
+            $ch = $this->_init_curl();
             curl_setopt($ch, CURLOPT_RESUME_FROM, $this->offset);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); 
             $res = curl_exec($ch);
@@ -122,12 +121,23 @@ class WebTail
     * Some Global Curl options to setup
     *
     **/
-    private function _setup_curl($ch)
+    private function _init_curl()
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $this->url); 
-        curl_setopt($ch, CURLOPT_USERAGENT, "webtail.php: ".WEBTAIL_VERSION);
+        curl_setopt($ch, CURLOPT_USERAGENT, WEBTAIL_VERSION);
 
+        /** Ignore SSL Errors **/
+        curl_setopt($ch, CURLOPT_SSLVERSION,3);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2); 
+
+        if (preg_match('#^http(s)?://((.*):(.*))@#i', $this->url, $matches))
+        {
+            curl_setopt($ch, CURLOPT_USERPWD, $matches[2]); 
+        }
+
+        return ($ch);
     }
 
 
@@ -154,6 +164,7 @@ if ($first_include == __FILE__)
     /** Check if this file got included for the WebTail class, otherwise execute below **/
     
     $interval = 5;
+    $last_bytes = 0;
     $urls = array();
 
     foreach ($argv as $k => $v)
@@ -162,11 +173,24 @@ if ($first_include == __FILE__)
         {
             $interval = $argv[$k+1];
         }
+        else if ($v == "--version")
+        {
+            print "Version: ".WEBTAIL_VERSION."\n";
+            exit(0);
+        }
+        else if (in_array($v, array('-q', '--quiet', '--silent')))
+        {
+            $no_headers = True;
+        }
+        else if ($v == '-c' && is_numeric($argv[$k+1]))
+        {
+            $last_bytes = $argv[$k+1];
+        }
         else if (stristr($v, 'http'))
         {
             try
             {
-                $wt = new WebTail($v, $interval);
+                $wt = new WebTail($v, $interval, $last_bytes);
             }
             catch (Exception $e)
             {
@@ -180,8 +204,16 @@ if ($first_include == __FILE__)
 
     if (empty($urls))
     {
-        print "Usage: \n";
-        print "webtail.php [-i <interval>] <url> <url...n>\n";
+        print <<<EOF
+Usage: {$argv[0]} [OPTION]... [FILE]...
+
+Valid options are:
+\t\t-i <interval>\t\tinterval for updates
+\t\t--version\t\toutput version information and exit
+\t\t-q, --quiet, --silent\tnever output headers giving file names
+\t\t-c <n>\t\t\toutput the last N bytes
+
+EOF;
         exit (0);
     }
 
@@ -191,8 +223,7 @@ if ($first_include == __FILE__)
         {
             if (($res = $wt->update()) !== False)
             {
-
-                if ($prev_print !== $wt->url)
+                if ($prev_print !== $wt->url && !$no_headers)
                 {
                     print "\n==> {$wt->url} <==\n";
                     print $res;
