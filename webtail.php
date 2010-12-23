@@ -44,7 +44,6 @@ class WebTail
         $info = curl_getinfo($ch);
         curl_close($ch);
 
-        print_r($info);  
         if ($info['http_code'] !== 200)
         {
             throw new Exception ("Unable to open {$url}\n");
@@ -59,8 +58,6 @@ class WebTail
             $this->offset = $info['download_content_length'];
         }
 
-        print_r($this);
-            
         $this->interval = $interval;
     }
 
