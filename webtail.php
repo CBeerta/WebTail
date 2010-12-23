@@ -165,6 +165,7 @@ if ($first_include == __FILE__)
 
     $interval = 5;
     $last_bytes = 0;
+    $no_headers = false;
     $urls = array();
 
     foreach ($argv as $k => $v)
@@ -180,7 +181,7 @@ if ($first_include == __FILE__)
         }
         else if (in_array($v, array('-q', '--quiet', '--silent')))
         {
-            $no_headers = True;
+            $no_headers = true;
         }
         else if ($v == '-c' && is_numeric($argv[$k+1]))
         {
