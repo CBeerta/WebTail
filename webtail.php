@@ -218,6 +218,7 @@ EOF;
         exit (0);
     }
 
+    $prev_print = Null;
     do
     {
         foreach ($urls as $wt)
